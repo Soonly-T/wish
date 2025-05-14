@@ -117,7 +117,6 @@ def dashboard(request, id):
     return render(request,'dashboard.html', context)
 
 def wishes(request):
-    
     if 'user_id' not in request.session:
         return redirect('/')
     context = {
@@ -171,8 +170,15 @@ def update_wish(request):
     #added a if condition to check for wishid and would redirect to /wishes if there's no wish_id
     if 'wish_id' not in request.session:
         return redirect('/wishes')
+    #added double filteringto ensure only the correct user can modify the wish
+    user_id=request.session["user_id"]
     wish_id = request.session['wish_id']
-    wish = Wish.objects.filter(id=wish_id)
+    user= User.objects.filter(id=user_id)
+    logged_user = user[0]
+    print (wish_id, logged_user.id)
+    wish = Wish.objects.filter(id=wish_id,wisher_id=logged_user.id)
+    print("Wish:",wish)
+
     if len(wish) != 1:
         return redirect('/wishes')
     errors = Wish.objects.basic_validator(request.POST)
@@ -187,10 +193,10 @@ def update_wish(request):
     else:
         if request.session['user_id'] == wish[0].wisher_id:
             wish = Wish.objects.get(id=wish_id)
-            print(wish.item)
+
             print(request.POST['item'])
             wish.item = request.POST['item']
-            print(wish.item)
+
             wish.description = request.POST['description']
             wish.save()
             return redirect('/wishes')
