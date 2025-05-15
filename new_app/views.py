@@ -106,10 +106,16 @@ def dashboard(request, id):
     }
     return render(request,'dashboard.html', context)
 def wishes(request):
+    # better exception handling
     if 'user_id' not in request.session:
         return redirect('/')
+    try:
+        user=User.objects.get(id=request.session['user_id']),
+    except:
+        return redirect('/')
+
     context = {
-        'user': User.objects.get(id=request.session['user_id']),
+        'user': user,
         'wish_list': Wish.objects.all(),
     }
     return render(request, 'wishes.html', context)
@@ -178,9 +184,13 @@ def update_wish(request):
             wish = Wish.objects.get(id=wish_id)
             #adds in data validation on the back end
             if not request.POST.get('item') or not request.POST.get('description') or len(request.POST.get('item')) < 3 or len(request.POST.get('description')) < 1:
-                    return redirect('/wishes')
-            wish.item = request.POST['item']
-            wish.description = request.POST['description']
+                return redirect('/wishes')
+            
+            #Written to avoid a code 500 Error
+            item_from_post = request.POST.get('item', wish.item)
+            description_from_post = request.POST.get('description', wish.description)
+            wish.item = item_from_post
+            wish.description = description_from_post
             wish.save()
             return redirect('/wishes')
         return redirect('/wishes')
@@ -190,6 +200,15 @@ def delete_wish(request):
     if request.method != 'POST':
         return redirect('/wishes')
     else:
+        # added error handling in case that wish id is not valid
+        wish_id_from_post = request.POST.get('wish_id')
+        if wish_id_from_post is None:
+
+             return redirect('/wishes')
+        try:
+            wish_id_int = int(wish_id_from_post)
+        except ValueError:
+             return redirect('/wishes')
         #added double filtering to ensure only the correct user can delete the wish
         user_id=request.session["user_id"]
         user= User.objects.filter(id=user_id)
