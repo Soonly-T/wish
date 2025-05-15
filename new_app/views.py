@@ -2,13 +2,10 @@ from django.shortcuts import render, redirect
 from .models import *
 from django.contrib import messages
 import bcrypt
-
 def index(request):
     return render(request, 'index.html')
-
 def users(request):
     return render(request, 'users.html')
-
 def add_user(request):
     if request.method != 'POST':
         return redirect('/users')
@@ -23,14 +20,13 @@ def add_user(request):
     bd = request.POST['birthday']
     password = request.POST['password']
     hash_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    User.objects.create(first_name=fn, last_name=ln, email=em, birthday=bd, password=hash_pw)
-    logged_in_user = User.objects.last()
+    #fixed it to use a variable instead of .last() to avoid concurrency issues
+    new_user=User.objects.create(first_name=fn, last_name=ln, email=em, birthday=bd, password=hash_pw)
+    logged_in_user = new_user
     request.session['user_id'] = logged_in_user.id
     request.session['first_name'] = logged_in_user.first_name
     request.session['last_name'] = logged_in_user.last_name
     return redirect('/wishes')
-
-
 def user_login(request):
     if request.method != 'POST':
         return redirect('/users')
@@ -50,11 +46,9 @@ def user_login(request):
             request.session['last_name'] = logged_user.last_name
             return redirect(f'/wishes')
         return redirect('/users')
-
 def user_logout(request):
     request.session.flush()
     return redirect('/')
-
 def user_edit(request):
     
     if 'user_id' not in request.session:
@@ -66,56 +60,51 @@ def user_edit(request):
         'user': user[0]
     }
     return render(request, 'edit_user.html', context)
-
 def user_update(request):
-    print(request.POST)
+    # added in a redirect if any user tries to access via URL
+    if any(key not in request.POST for key in ['first_name', 'last_name', 'email', 'birthday', 'password', 'confirmed_password']):
+        return redirect('/users/edit')
     if 'user_id' not in request.session:
         return redirect('/')
     user = User.objects.filter(id=request.session['user_id'])
-    print("User1:", user[0].id)
     user_id=user[0].id
     if not user:
-        print("user not found error")
         return redirect('/')
     errors = User.objects.update_validator(request.POST)
     if errors:
-        print("some other error")
         for v in errors.values():
             messages.error(request, v)
-
         # removed the user_id from url param
         return redirect(f'/users/edit')
     if request.method != 'POST':
-        print("method not post error")
         return redirect(f'/users/{user_id}/dashboard')
     if request.session['user_id'] == user[0].id:
-        print("Case 0")
         user[0].first_name = request.POST['first_name']
         user[0].last_name = request.POST['last_name']
         user[0].email = request.POST['email']
         user[0].birthday = request.POST['birthday']
         if request.POST['password'] == '':
             user[0].save()
-            print("User:" +user[0])
             return redirect(f'/users/{user_id}/dashboard')
         else:
-            print("Case 0.1")
             password = request.POST['password']
             hash_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
             user[0].password = hash_pw
             user[0].save()
             return redirect(f'/users/{user_id}/dashboard')
-
 def dashboard(request, id):
     if 'user_id' not in request.session:
         return redirect('/')
-    user = User.objects.get(id=id) 
-    # removed the [0] from user
+    #written just in case people try to access to wrong user id
+    try:
+        user = User.objects.get(id=id)
+    except:
+        return redirect('/wishes')
+    # removed the [0] from user given that .get() returns only one object instance
     context = {
         'user': user,
     }
     return render(request,'dashboard.html', context)
-
 def wishes(request):
     if 'user_id' not in request.session:
         return redirect('/')
@@ -123,16 +112,15 @@ def wishes(request):
         'user': User.objects.get(id=request.session['user_id']),
         'wish_list': Wish.objects.all(),
     }
-    print(context["wish_list"])
     return render(request, 'wishes.html', context)
-
 def new_wish(request):
     if 'user_id' not in request.session:
         return redirect('/')
     return render(request, 'add_wish.html')
-
 def add_wish(request):
-    print(request.POST)
+    # added a redirect if user tries to access it the wrong way
+    if "item" not in request.POST or "description" not in request.POST:
+        return redirect('/wishes/add')
     errors = Wish.objects.basic_validator(request.POST)
     if errors:
         for v in errors.values():
@@ -141,7 +129,7 @@ def add_wish(request):
     if 'user_id' not in request.session:
         return redirect('/')
     if request.method != 'POST':
-        return redirect('/wishes')
+        return redirect('/wishes')  
     user = User.objects.filter(id=request.session['user_id'])
     if not user:
         return redirect('/')
@@ -150,7 +138,6 @@ def add_wish(request):
     d = request.POST['description']
     Wish.objects.create(item=i, description=d, is_granted=0, wisher_id=logged_user.id)
     return redirect('/wishes')
-
 def wish(request):
     if 'user_id' not in request.session:
         return redirect('/')
@@ -165,20 +152,16 @@ def wish(request):
         'wish': wish[0],
     }
     return render(request, 'wish.html', context)
-
 def update_wish(request):
     #added a if condition to check for wishid and would redirect to /wishes if there's no wish_id
     if 'wish_id' not in request.session:
         return redirect('/wishes')
-    #added double filteringto ensure only the correct user can modify the wish
+    #added double filtering to ensure only the correct user can modify the wish
     user_id=request.session["user_id"]
     wish_id = request.session['wish_id']
     user= User.objects.filter(id=user_id)
     logged_user = user[0]
-    print (wish_id, logged_user.id)
     wish = Wish.objects.filter(id=wish_id,wisher_id=logged_user.id)
-    print("Wish:",wish)
-
     if len(wish) != 1:
         return redirect('/wishes')
     errors = Wish.objects.basic_validator(request.POST)
@@ -193,63 +176,60 @@ def update_wish(request):
     else:
         if request.session['user_id'] == wish[0].wisher_id:
             wish = Wish.objects.get(id=wish_id)
-
-            print(request.POST['item'])
+            #adds in data validation on the back end
+            if not request.POST.get('item') or not request.POST.get('description') or len(request.POST.get('item')) < 3 or len(request.POST.get('description')) < 1:
+                    return redirect('/wishes')
             wish.item = request.POST['item']
-
             wish.description = request.POST['description']
             wish.save()
             return redirect('/wishes')
         return redirect('/wishes')
-
 def delete_wish(request):
     if 'user_id' not in request.session:
         return redirect('/')
     if request.method != 'POST':
         return redirect('/wishes')
     else:
-        wish = Wish.objects.filter(id=request.POST['wish_id'])
+        #added double filtering to ensure only the correct user can delete the wish
+        user_id=request.session["user_id"]
+        user= User.objects.filter(id=user_id)
+        logged_user = user[0]
+        wish = Wish.objects.filter(id=request.POST['wish_id'],wisher_id=logged_user.id)
         if len(wish) != 1:
             return redirect('/wishes')
         wish.delete()
         return redirect('/wishes')
-
 def granted_wish(request):
     if 'user_id' not in request.session:
         return redirect('/')
     if request.method != 'POST':
         return redirect('/wishes')
     else:
-        wish = Wish.objects.filter(id=request.POST['wish_id'])
+        #added double filtering to ensure only the correct user can grant the wish
+        user_id=request.session["user_id"]
+        user= User.objects.filter(id=user_id)
+        logged_user = user[0]
+        wish = Wish.objects.filter(id=request.POST['wish_id'],wisher_id=logged_user.id)
         if len(wish) != 1:
             return redirect('/wishes')
         wish[0].is_granted = 1
         wish[0].save()
         wish[0].granter.add(request.session['user_id'])
         return redirect('/wishes')
-
 def like_wish(request):
     if 'user_id' not in request.session:
-        print("Case 1")
         return redirect('/')
     user = User.objects.filter(id=request.session['user_id'])
     if not user:
-        print("Case 2")
         return redirect('/')
     if request.method != 'POST':
-
-        print("Case 3")
         return redirect('/wishes')
     else:
         wish = Wish.objects.filter(id=request.POST['wish_id'])
-
-        print("Case 4")
         if len(wish) != 1:
             return redirect('/wishes')
-        print("Wish Likers:",wish[0].likers)
         wish[0].likers.add(user[0])
         return redirect('/wishes')
-
 def unlike_wish(request):
     if 'user_id' not in request.session:
         return redirect('/')
@@ -264,7 +244,6 @@ def unlike_wish(request):
             return redirect('/wishes')
         wish[0].likers.remove(user[0])
         return redirect('/wishes')
-
 def stat(request):
     if 'user_id' not in request.session:
         return redirect('/')

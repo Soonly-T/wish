@@ -11,6 +11,8 @@ urlpatterns = [
     path('users/edit', views.user_edit), #
     path('users/update', views.user_update), #
     #appended a '/' (I know there's an append / boolean somewhere but I'd use this tempoary fix unless there are are other problems)
+    path('wishes/<int:wish_id>/edit/', views.wish),
+    path('wishes/<int:wish_id>/update/', views.update_wish),
     path('wishes/', views.wishes), #
     path('wishes/add', views.new_wish), #
     path('wishes/new', views.add_wish), #
